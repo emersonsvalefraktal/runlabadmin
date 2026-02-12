@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MoreVertical, Pencil, Trash2, RefreshCw, XCircle, X } from "lucide-react";
+import { MoreVertical, Pencil, Trash2, RefreshCw, XCircle, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,108 +24,47 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toast } from "@/hooks/use-toast";
+import { Pagination } from "@/components/Pagination";
+import { useCampeonatos } from "@/hooks/useCampeonatos";
+import type { CampeonatoRow } from "@/hooks/useCampeonatos";
+import { supabase } from "@/lib/supabase";
 
-const mockData = [
-  {
-    id: "CAMP001",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 12,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking soma",
-  },
-  {
-    id: "CAMP002",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 12,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking soma",
-  },
-  {
-    id: "CAMP003",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 11,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking média",
-  },
-  {
-    id: "CAMP004",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 14,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking soma",
-  },
-  {
-    id: "CAMP005",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 10,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking soma",
-  },
-  {
-    id: "CAMP006",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 14,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking média",
-  },
-  {
-    id: "CAMP007",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 11,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking soma",
-  },
-  {
-    id: "CAMP008",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 12,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking média",
-  },
-  {
-    id: "CAMP009",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/26",
-    etapas: 10,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking média",
-  },
-  {
-    id: "CAMP010",
-    nome: "Campeonato Nacional de 2025",
-    nomeReduzido: "Camp/25",
-    etapas: 16,
-    periodo: "01/30 - 12/25",
-    tipoRanking: "Ranking média",
-  },
-];
-
-
+const PAGE_SIZE = 10;
 
 export const CampeonatosTable = () => {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
+  const { data: rows, loading, error, refetch } = useCampeonatos();
+  const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<CampeonatoRow | null>(null);
 
-  const handleDelete = () => {
-    console.log("Excluindo:", selectedItem);
-    toast({
-      title: "Campeonato excluído com sucesso!",
-      duration: 3000,
-    });
+  useEffect(() => {
+    setPage(1);
+  }, [rows.length]);
+
+  const paginatedData = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleDelete = async () => {
+    if (!selectedItem) return;
+    try {
+      const { error: deleteError } = await supabase.from("championships").delete().eq("id", selectedItem.id);
+      if (deleteError) throw deleteError;
+      toast({
+        title: "Campeonato excluído com sucesso!",
+        duration: 3000,
+      });
+      refetch();
+    } catch {
+      toast({
+        title: "Erro ao excluir campeonato",
+        variant: "destructive",
+      });
+    }
     setDeleteDialogOpen(false);
     setSelectedItem(null);
   };
@@ -135,19 +74,40 @@ export const CampeonatosTable = () => {
       <div className="px-6 py-4 bg-[#262626]">
         <h2 className="text-xl font-semibold text-foreground">Campeonatos</h2>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-table-header hover:bg-table-header">
-            <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Nome</TableHead>
-            <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Nome reduzido</TableHead>
-            <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Etapas</TableHead>
-            <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Período</TableHead>
-            <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Tipo ranking</TableHead>
-            <TableHead className="font-medium w-12"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {mockData.map((item) => (
+
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {error && (
+        <div className="px-6 py-4 text-destructive text-sm">
+          {error.message}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-table-header hover:bg-table-header">
+              <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Nome</TableHead>
+              <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Nome reduzido</TableHead>
+              <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Etapas</TableHead>
+              <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Período</TableHead>
+              <TableHead className="font-medium" style={{ color: '#E0E0E0' }}>Tipo ranking</TableHead>
+              <TableHead className="font-medium w-12"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                  Nenhum campeonato cadastrado.
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedData.map((item) => (
             <TableRow 
               key={item.id} 
               className="border-border hover:bg-muted/50 cursor-pointer transition-colors bg-[#262626]"
@@ -181,7 +141,7 @@ export const CampeonatosTable = () => {
                       className="cursor-pointer py-3 px-3 rounded-md hover:bg-[#1A1A1A] border border-transparent hover:border-border/50 transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedItem(item.nome);
+                        setSelectedItem(item);
                         setDeleteDialogOpen(true);
                       }}
                     >
@@ -200,9 +160,20 @@ export const CampeonatosTable = () => {
                 </DropdownMenu>
               </TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      )}
+
+      {!loading && !error && rows.length > 0 && (
+        <Pagination
+          total={rows.length}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      )}
 
       {/* Dialog de confirmação de exclusão */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -232,7 +203,7 @@ export const CampeonatosTable = () => {
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={handleDelete}
             >
-              Excluir usuário
+              Excluir campeonato
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

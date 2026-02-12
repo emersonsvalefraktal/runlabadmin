@@ -1,0 +1,682 @@
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+
+// ─── Types ───────────────────────────────────────────────
+
+export type CompetitionDistance = {
+  id: string;
+  label: string;
+  meters: number;
+  sortOrder: number;
+};
+
+export type CompetitionLot = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  currency: string;
+  isSubscriptionAllowed: boolean;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type CompetitionDocument = {
+  id: string;
+  title: string;
+  fileUrl: string;
+  sortOrder: number;
+};
+
+export type CompetitionSponsor = {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  sortOrder: number;
+};
+
+export type CompetitionDetail = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  locationName: string | null;
+  startsAt: string;
+  registrationStartsAt: string | null;
+  registrationEndsAt: string | null;
+  mode: string;
+  status: string;
+  isFree: boolean;
+  coverImageUrl: string | null;
+  description: string | null;
+  prizeDescription: string | null;
+  championshipId: string | null;
+  distances: CompetitionDistance[];
+  lots: CompetitionLot[];
+  documents: CompetitionDocument[];
+  sponsors: CompetitionSponsor[];
+  stats: {
+    totalAthletes: number;
+    totalRegistrations: number;
+    totalRevenueCents: number;
+  };
+};
+
+export type RegistrationRow = {
+  id: string;
+  userName: string;
+  userAvatar: string | null;
+  distanceLabel: string | null;
+  distanceMeters: number | null;
+  attempts: number;
+  priceCents: number | null;
+  lotName: string | null;
+  status: string;
+  createdAt: string;
+};
+
+export type RankingRow = {
+  position: number;
+  userId: string;
+  userName: string;
+  userAvatar: string | null;
+  paceSecondsPerKm: number | null;
+  distanceMeters: number;
+  totalTimeSeconds: number;
+};
+
+// ─── Helpers ─────────────────────────────────────────────
+
+export const formatPace = (seconds: number | null): string => {
+  if (!seconds || seconds <= 0) return "-";
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}/km`;
+};
+
+export const formatDistanceKm = (meters: number): string => {
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(2).replace(".", ",")}km`;
+  }
+  return `${meters}m`;
+};
+
+export const formatPrice = (cents: number | null): string => {
+  if (cents === null || cents === undefined) return "-";
+  return `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
+};
+
+export const mapRegistrationStatus = (status: string): string => {
+  switch (status) {
+    case "pending":
+      return "Pendente";
+    case "confirmed":
+      return "Confirmado";
+    case "cancelled":
+      return "Cancelado";
+    default:
+      return status;
+  }
+};
+
+export const mapCompetitionStatus = (status: string): string => {
+  switch (status) {
+    case "draft":
+      return "Rascunho";
+    case "open":
+      return "Aberta";
+    case "closed":
+      return "Fechada";
+    case "in_progress":
+      return "Em andamento";
+    case "finished":
+      return "Finalizada";
+    default:
+      return status;
+  }
+};
+
+export const formatDateBR = (date: string | null): string => {
+  if (!date) return "-";
+  return new Date(date).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+};
+
+export const formatDateRangeBR = (
+  start: string | null,
+  end: string | null
+): string => {
+  if (!start && !end) return "-";
+  const s = start ? formatDateBR(start) : "";
+  const e = end ? formatDateBR(end) : "";
+  if (s && e) return `${s} - ${e}`;
+  return s || e;
+};
+
+// ─── Hook: Competition Details ───────────────────────────
+
+export function useCompetitionDetails(id: string | undefined) {
+  const [data, setData] = useState<CompetitionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchDetails = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Fetch competition
+      const { data: comp, error: compError } = await supabase
+        .from("competitions")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (compError) throw compError;
+      if (!comp) throw new Error("Competição não encontrada");
+
+      // 2. Fetch distances
+      const { data: distances } = await supabase
+        .from("competition_distances")
+        .select("*")
+        .eq("competition_id", id)
+        .order("sort_order");
+
+      // 3. Fetch lots
+      const { data: lots } = await supabase
+        .from("competition_lots")
+        .select("*")
+        .eq("competition_id", id)
+        .order("sort_order");
+
+      // 4. Fetch documents
+      const { data: documents } = await supabase
+        .from("competition_documents")
+        .select("*")
+        .eq("competition_id", id)
+        .order("sort_order");
+
+      // 5. Fetch sponsors
+      const sponsorIds: string[] = comp.competition_sponsors || [];
+      let sponsors: CompetitionSponsor[] = [];
+      if (sponsorIds.length > 0) {
+        const { data: sponsorData } = await supabase
+          .from("competition_sponsors")
+          .select("*")
+          .in("id", sponsorIds)
+          .order("sort_order");
+
+        sponsors = (sponsorData || []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          logoUrl: s.logo_url,
+          sortOrder: s.sort_order,
+        }));
+      }
+
+      // 6. Fetch registration stats
+      const { data: registrations } = await supabase
+        .from("competition_registrations")
+        .select("id, user_id, lot_id, status")
+        .eq("competition_id", id)
+        .neq("status", "cancelled");
+
+      const totalRegistrations = registrations?.length || 0;
+      const uniqueUsers = new Set(registrations?.map((r) => r.user_id));
+      const totalAthletes = uniqueUsers.size;
+
+      // 7. Calculate revenue from confirmed registrations + lots
+      let totalRevenueCents = 0;
+      if (registrations && registrations.length > 0 && lots) {
+        const lotPriceMap: Record<string, number> = {};
+        (lots || []).forEach((l) => {
+          lotPriceMap[l.id] = l.price_cents;
+        });
+
+        registrations
+          .filter((r) => r.status === "confirmed" && r.lot_id)
+          .forEach((r) => {
+            totalRevenueCents += lotPriceMap[r.lot_id] || 0;
+          });
+      }
+
+      setData({
+        id: comp.id,
+        title: comp.title,
+        subtitle: comp.subtitle,
+        locationName: comp.location_name,
+        startsAt: comp.starts_at,
+        registrationStartsAt: comp.registration_starts_at,
+        registrationEndsAt: comp.registration_ends_at,
+        mode: comp.mode,
+        status: comp.status,
+        isFree: comp.is_free,
+        coverImageUrl: comp.cover_image_url,
+        description: comp.description,
+        prizeDescription: comp.prize_description,
+        championshipId: comp.championship_id,
+        distances: (distances || []).map((d) => ({
+          id: d.id,
+          label: d.label,
+          meters: d.meters,
+          sortOrder: d.sort_order,
+        })),
+        lots: (lots || []).map((l) => ({
+          id: l.id,
+          name: l.name,
+          description: l.description,
+          priceCents: l.price_cents,
+          currency: l.currency,
+          isSubscriptionAllowed: l.is_subscription_allowed,
+          isActive: l.is_active,
+          sortOrder: l.sort_order,
+        })),
+        documents: (documents || []).map((d) => ({
+          id: d.id,
+          title: d.title,
+          fileUrl: d.file_url,
+          sortOrder: d.sort_order,
+        })),
+        sponsors,
+        stats: {
+          totalAthletes,
+          totalRegistrations,
+          totalRevenueCents,
+        },
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e : new Error("Erro ao carregar detalhes")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
+
+  return { data, loading, error, refetch: fetchDetails };
+}
+
+// ─── Hook: Competition Registrations (paginated) ─────────
+
+export function useCompetitionRegistrations(
+  competitionId: string | undefined,
+  page: number = 1,
+  pageSize: number = 10
+) {
+  const [data, setData] = useState<RegistrationRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchRegistrations = useCallback(async () => {
+    if (!competitionId) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      // Fetch registrations with count
+      const {
+        data: regs,
+        error: regsError,
+        count,
+      } = await supabase
+        .from("competition_registrations")
+        .select("id, user_id, distance_id, lot_id, status, created_at", {
+          count: "exact",
+        })
+        .eq("competition_id", competitionId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (regsError) throw regsError;
+      setTotal(count || 0);
+
+      if (!regs || regs.length === 0) {
+        setData([]);
+        return;
+      }
+
+      // Fetch profiles for user_ids
+      const userIds = [...new Set(regs.map((r) => r.user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", userIds);
+
+      const profileMap: Record<
+        string,
+        { full_name: string | null; avatar_url: string | null }
+      > = {};
+      (profiles || []).forEach((p) => {
+        profileMap[p.id] = p;
+      });
+
+      // Fetch distances
+      const distanceIds = [
+        ...new Set(regs.filter((r) => r.distance_id).map((r) => r.distance_id)),
+      ];
+      const distanceMap: Record<string, { label: string; meters: number }> = {};
+      if (distanceIds.length > 0) {
+        const { data: dists } = await supabase
+          .from("competition_distances")
+          .select("id, label, meters")
+          .in("id", distanceIds);
+        (dists || []).forEach((d) => {
+          distanceMap[d.id] = d;
+        });
+      }
+
+      // Fetch lots
+      const lotIds = [
+        ...new Set(regs.filter((r) => r.lot_id).map((r) => r.lot_id)),
+      ];
+      const lotMap: Record<string, { name: string; price_cents: number }> = {};
+      if (lotIds.length > 0) {
+        const { data: lotsData } = await supabase
+          .from("competition_lots")
+          .select("id, name, price_cents")
+          .in("id", lotIds);
+        (lotsData || []).forEach((l) => {
+          lotMap[l.id] = l;
+        });
+      }
+
+      // Fetch attempt counts (user_runs per user for this competition)
+      const { data: runs } = await supabase
+        .from("user_runs")
+        .select("user_id")
+        .eq("competition_id", competitionId)
+        .in("user_id", userIds);
+
+      const attemptsByUser: Record<string, number> = {};
+      (runs || []).forEach((r) => {
+        attemptsByUser[r.user_id] = (attemptsByUser[r.user_id] || 0) + 1;
+      });
+
+      const rows: RegistrationRow[] = regs.map((r) => {
+        const profile = profileMap[r.user_id];
+        const distance = r.distance_id ? distanceMap[r.distance_id] : null;
+        const lot = r.lot_id ? lotMap[r.lot_id] : null;
+        return {
+          id: r.id,
+          userName: profile?.full_name || "Usuário desconhecido",
+          userAvatar: profile?.avatar_url || null,
+          distanceLabel: distance?.label || null,
+          distanceMeters: distance?.meters || null,
+          attempts: attemptsByUser[r.user_id] || 0,
+          priceCents: lot?.price_cents ?? null,
+          lotName: lot?.name || null,
+          status: r.status,
+          createdAt: r.created_at,
+        };
+      });
+
+      setData(rows);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e : new Error("Erro ao carregar inscrições")
+      );
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [competitionId, page, pageSize]);
+
+  useEffect(() => {
+    fetchRegistrations();
+  }, [fetchRegistrations]);
+
+  return { data, total, loading, error, refetch: fetchRegistrations };
+}
+
+// ─── Hook: Competition Ranking (paginated) ───────────────
+
+export function useCompetitionRanking(
+  competitionId: string | undefined,
+  page: number = 1,
+  pageSize: number = 10
+) {
+  const [data, setData] = useState<RankingRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchRanking = useCallback(async () => {
+    if (!competitionId) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      // Fetch finished runs sorted by distance desc then pace asc
+      const {
+        data: runs,
+        error: runsError,
+        count,
+      } = await supabase
+        .from("user_runs")
+        .select(
+          "id, user_id, distance_meters, avg_pace_seconds_per_km, total_time_seconds",
+          { count: "exact" }
+        )
+        .eq("competition_id", competitionId)
+        .eq("state", "finished")
+        .order("distance_meters", { ascending: false })
+        .order("avg_pace_seconds_per_km", { ascending: true })
+        .range(from, to);
+
+      if (runsError) throw runsError;
+      setTotal(count || 0);
+
+      if (!runs || runs.length === 0) {
+        setData([]);
+        return;
+      }
+
+      // Fetch profiles
+      const userIds = [...new Set(runs.map((r) => r.user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", userIds);
+
+      const profileMap: Record<
+        string,
+        { full_name: string | null; avatar_url: string | null }
+      > = {};
+      (profiles || []).forEach((p) => {
+        profileMap[p.id] = p;
+      });
+
+      const rows: RankingRow[] = runs.map((r, index) => {
+        const profile = profileMap[r.user_id];
+        return {
+          position: from + index + 1,
+          userId: r.user_id,
+          userName: profile?.full_name || "Usuário desconhecido",
+          userAvatar: profile?.avatar_url || null,
+          paceSecondsPerKm: r.avg_pace_seconds_per_km,
+          distanceMeters: r.distance_meters,
+          totalTimeSeconds: r.total_time_seconds,
+        };
+      });
+
+      setData(rows);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e : new Error("Erro ao carregar ranking")
+      );
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [competitionId, page, pageSize]);
+
+  useEffect(() => {
+    fetchRanking();
+  }, [fetchRanking]);
+
+  return { data, total, loading, error, refetch: fetchRanking };
+}
+
+// ─── CSV Export Helpers ──────────────────────────────────
+
+export function generateCsv(headers: string[], rows: string[][]): string {
+  const csvRows = [
+    headers.join(","),
+    ...rows.map((row) =>
+      row.map((cell) => `"${(cell ?? "").replace(/"/g, '""')}"`).join(",")
+    ),
+  ];
+  return csvRows.join("\n");
+}
+
+export function downloadCsv(content: string, filename: string) {
+  const blob = new Blob(["\uFEFF" + content], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Exports all registrations for a competition as CSV */
+export async function exportRegistrationsCsv(competitionId: string) {
+  // Fetch ALL registrations (no pagination)
+  const { data: regs, error: regsError } = await supabase
+    .from("competition_registrations")
+    .select("id, user_id, distance_id, lot_id, status, created_at")
+    .eq("competition_id", competitionId)
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: false });
+
+  if (regsError) throw regsError;
+  if (!regs || regs.length === 0) {
+    throw new Error("Nenhuma inscrição para exportar");
+  }
+
+  const userIds = [...new Set(regs.map((r) => r.user_id))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", userIds);
+
+  const profileMap: Record<string, string> = {};
+  (profiles || []).forEach((p) => {
+    profileMap[p.id] = p.full_name || "Desconhecido";
+  });
+
+  const distanceIds = [
+    ...new Set(regs.filter((r) => r.distance_id).map((r) => r.distance_id)),
+  ];
+  const distanceMap: Record<string, string> = {};
+  if (distanceIds.length > 0) {
+    const { data: dists } = await supabase
+      .from("competition_distances")
+      .select("id, label")
+      .in("id", distanceIds);
+    (dists || []).forEach((d) => {
+      distanceMap[d.id] = d.label;
+    });
+  }
+
+  const lotIds = [
+    ...new Set(regs.filter((r) => r.lot_id).map((r) => r.lot_id)),
+  ];
+  const lotMap: Record<string, { name: string; price_cents: number }> = {};
+  if (lotIds.length > 0) {
+    const { data: lotsData } = await supabase
+      .from("competition_lots")
+      .select("id, name, price_cents")
+      .in("id", lotIds);
+    (lotsData || []).forEach((l) => {
+      lotMap[l.id] = l;
+    });
+  }
+
+  const { data: runs } = await supabase
+    .from("user_runs")
+    .select("user_id")
+    .eq("competition_id", competitionId)
+    .in("user_id", userIds);
+
+  const attemptsByUser: Record<string, number> = {};
+  (runs || []).forEach((r) => {
+    attemptsByUser[r.user_id] = (attemptsByUser[r.user_id] || 0) + 1;
+  });
+
+  const headers = ["Nome", "Distância", "Tentativas", "Lote", "Valor", "Status", "Data de inscrição"];
+  const rows = regs.map((r) => {
+    const lot = r.lot_id ? lotMap[r.lot_id] : null;
+    return [
+      profileMap[r.user_id] || "Desconhecido",
+      r.distance_id ? distanceMap[r.distance_id] || "-" : "-",
+      String(attemptsByUser[r.user_id] || 0),
+      lot?.name || "-",
+      lot ? formatPrice(lot.price_cents) : "-",
+      mapRegistrationStatus(r.status),
+      new Date(r.created_at).toLocaleDateString("pt-BR"),
+    ];
+  });
+
+  const csv = generateCsv(headers, rows);
+  downloadCsv(csv, `inscricoes-${competitionId}.csv`);
+}
+
+/** Exports all ranking entries for a competition as CSV */
+export async function exportRankingCsv(competitionId: string) {
+  const { data: runs, error: runsError } = await supabase
+    .from("user_runs")
+    .select(
+      "id, user_id, distance_meters, avg_pace_seconds_per_km, total_time_seconds"
+    )
+    .eq("competition_id", competitionId)
+    .eq("state", "finished")
+    .order("distance_meters", { ascending: false })
+    .order("avg_pace_seconds_per_km", { ascending: true });
+
+  if (runsError) throw runsError;
+  if (!runs || runs.length === 0) {
+    throw new Error("Nenhum resultado no ranking para exportar");
+  }
+
+  const userIds = [...new Set(runs.map((r) => r.user_id))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", userIds);
+
+  const profileMap: Record<string, string> = {};
+  (profiles || []).forEach((p) => {
+    profileMap[p.id] = p.full_name || "Desconhecido";
+  });
+
+  const headers = ["Posição", "Corredor", "Pace", "Distância"];
+  const rows = runs.map((r, i) => [
+    `${i + 1}º`,
+    profileMap[r.user_id] || "Desconhecido",
+    formatPace(r.avg_pace_seconds_per_km),
+    formatDistanceKm(r.distance_meters),
+  ]);
+
+  const csv = generateCsv(headers, rows);
+  downloadCsv(csv, `ranking-${competitionId}.csv`);
+}

@@ -3,6 +3,7 @@ import { FinanceiroTabProvider, FinanceiroTabs, useFinanceiroTab } from "@/compo
 import { FinanceiroActions } from "@/components/FinanceiroActions";
 import { FinanceiroTable } from "@/components/FinanceiroTable";
 import { FinanceiroOverview } from "@/components/FinanceiroOverview";
+import { CompeticoesFilterProvider } from "@/contexts/CompeticoesFilterContext";
 import { CompeticoesActions } from "@/components/CompeticoesActions";
 import { CompeticoesTable } from "@/components/CompeticoesTable";
 import { RecebimentosActions } from "@/components/RecebimentosActions";
@@ -20,11 +21,10 @@ const FinanceiroContent = () => {
 
   if (activeTab === "competitions") {
     return (
-      <>
+      <CompeticoesFilterProvider>
         <CompeticoesActions />
         <CompeticoesTable />
-        <Pagination />
-      </>
+      </CompeticoesFilterProvider>
     );
   }
 

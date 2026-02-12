@@ -14,6 +14,7 @@ import GestaoCompeticoes from "./pages/GestaoCompeticoes";
 import CompeticaoDetalhes from "./pages/CompeticaoDetalhes";
 import EditarCompeticao from "./pages/EditarCompeticao";
 import CadastrarCampeonato from "./pages/CadastrarCampeonato";
+import CadastrarCampeonatoForm from "./pages/CadastrarCampeonatoForm";
 import Login from "./pages/Login";
 import PasswordRecovery from "./pages/PasswordRecovery";
 import MinhaConta from "./pages/MinhaConta";
@@ -41,7 +42,8 @@ const App = () => (
             <Route path="/gestao-competicoes" element={<GestaoCompeticoes />} />
             <Route path="/gestao-competicoes/:id" element={<CompeticaoDetalhes />} />
             <Route path="/gestao-competicoes/:id/editar" element={<EditarCompeticao />} />
-            <Route path="/gestao-competicoes/cadastrar-campeonato" element={<CadastrarCampeonato />} />
+            <Route path="/gestao-competicoes/cadastrar-competicao" element={<CadastrarCampeonato />} />
+            <Route path="/gestao-competicoes/cadastrar-campeonato" element={<CadastrarCampeonatoForm />} />
             <Route path="/minha-conta" element={<MinhaConta />} />
           </Route>
           <Route path="*" element={<NotFound />} />

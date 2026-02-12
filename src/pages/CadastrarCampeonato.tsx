@@ -18,10 +18,11 @@ import * as z from "zod";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 const formSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
-  descricao: z.string().min(1, "Descrição é obrigatória"),
+  descricao: z.string().optional(),
   modalidade: z.string().min(1, "Modalidade é obrigatória"),
   formato: z.string().min(1, "Formato é obrigatório"),
   campeonato: z.string().optional(),
@@ -29,27 +30,71 @@ const formSchema = z.object({
   inscricaoFim: z.date().optional(),
   competicaoInicio: z.date().optional(),
   competicaoFim: z.date().optional(),
+  tipoCompeticao: z.enum(["gratuita", "paga"]).optional(),
+  mode: z.enum(["indoor", "outdoor"]).optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
+
+const DISTANCE_METERS: Record<string, number> = {
+  "3km": 3000,
+  "5km": 5000,
+  "10km": 10000,
+  "15km": 15000,
+  "21km": 21000,
+  "42km": 42000,
+};
+
+function parseValorToCents(valor: string): number {
+  const cleaned = valor.replace(/\s/g, "").replace(/R\$\s?/i, "").replace(/\./g, "").replace(",", ".");
+  const num = parseFloat(cleaned);
+  if (Number.isNaN(num)) return 0;
+  return Math.round(num * 100);
+}
+
+/** Formata apenas dígitos como "R$ 0,00" (máscara pt-BR). */
+function formatValorMask(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return "";
+  const cents = parseInt(digits, 10);
+  const reais = cents / 100;
+  return "R$ " + reais.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 const CadastrarCampeonato = () => {
   const navigate = useNavigate();
   const [bannerImage, setBannerImage] = useState<string | null>(null);
   const [miniBannerImage, setMiniBannerImage] = useState<string | null>(null);
   const [selectedDistances, setSelectedDistances] = useState<string[]>([]);
+  const [outraDistancia, setOutraDistancia] = useState<string>("");
   const [tentativasIlimitadas, setTentativasIlimitadas] = useState(true);
   const [limiteInscritos, setLimiteInscritos] = useState(false);
   const [temPremiacoes, setTemPremiacoes] = useState<string>("sim");
   const [quantidadePremiacoes, setQuantidadePremiacoes] = useState<string>("");
-  const [possuiKit, setPossuiKit] = useState<string>("sim");
-  const [lotes, setLotes] = useState([
-    { id: 1, nome: "", valor: "", descricao: "", permitirCreditos: false }
+  const [lotes, setLotes] = useState<
+    { id: number; nome: string; valor: string; descricao: string; permitirCreditos: boolean; possuiKit: "sim" | "nao" }[]
+  >([
+    { id: 1, nome: "", valor: "", descricao: "", permitirCreditos: false, possuiKit: "sim" }
   ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { register, handleSubmit, formState: { errors }, setValue } = useForm<FormData>({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    defaultValues: {
+      nome: "",
+      descricao: "",
+      modalidade: "",
+      formato: "",
+      campeonato: "",
+      inscricaoInicio: undefined,
+      inscricaoFim: undefined,
+      competicaoInicio: undefined,
+      competicaoFim: undefined,
+      tipoCompeticao: "paga",
+      mode: "outdoor",
+    },
   });
+  const { register, handleSubmit, formState: { errors }, setValue, watch } = form;
 
   const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -92,22 +137,104 @@ const CadastrarCampeonato = () => {
 
 
   const adicionarLote = () => {
-    setLotes([...lotes, { id: lotes.length + 1, nome: "", valor: "", descricao: "", permitirCreditos: false }]);
+    setLotes([...lotes, { id: lotes.length + 1, nome: "", valor: "", descricao: "", permitirCreditos: false, possuiKit: "sim" }]);
+  };
+
+  const saveCompetition = async (status: "draft" | "open") => {
+    const data = form.getValues();
+    if (!data.nome?.trim()) {
+      toast({ title: "Nome é obrigatório", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const startsAt = data.competicaoInicio
+        ? data.competicaoInicio.toISOString()
+        : data.inscricaoFim
+          ? data.inscricaoFim.toISOString()
+          : new Date().toISOString();
+      const regStart = data.inscricaoInicio?.toISOString() ?? null;
+      const regEnd = data.inscricaoFim?.toISOString() ?? null;
+      const isFree = data.tipoCompeticao === "gratuita" || lotes.every((l) => parseValorToCents(l.valor) === 0);
+
+      const { data: comp, error: compError } = await supabase
+        .from("competitions")
+        .insert({
+          title: data.nome.trim(),
+          subtitle: null,
+          location_name: null,
+          starts_at: startsAt,
+          registration_starts_at: regStart,
+          registration_ends_at: regEnd,
+          mode: data.mode ?? "outdoor",
+          status,
+          is_free: isFree,
+          cover_image_url: null,
+          description: data.descricao?.trim() || null,
+          prize_description: temPremiacoes === "sim" ? `${quantidadePremiacoes || ""} premiados` : null,
+          competition_sponsors: null,
+        })
+        .select("id")
+        .single();
+
+      if (compError) throw compError;
+      const competitionId = comp.id;
+
+      const distanceRows: { competition_id: string; label: string; meters: number; sort_order: number }[] = [];
+      selectedDistances.forEach((d, i) => {
+        if (d === "outro" && outraDistancia) {
+          const km = parseFloat(outraDistancia.replace(",", "."));
+          if (!Number.isNaN(km)) distanceRows.push({ competition_id: competitionId, label: `${km} km`, meters: Math.round(km * 1000), sort_order: i });
+        } else if (DISTANCE_METERS[d]) {
+          distanceRows.push({ competition_id: competitionId, label: d, meters: DISTANCE_METERS[d], sort_order: i });
+        }
+      });
+      if (distanceRows.length > 0) {
+        const { error: distError } = await supabase.from("competition_distances").insert(distanceRows);
+        if (distError) throw distError;
+      }
+
+      const lotRows = lotes
+        .filter((l) => l.nome.trim() || l.valor || l.descricao.trim())
+        .map((l, i) => ({
+          competition_id: competitionId,
+          name: l.nome.trim() || `Lote ${i + 1}`,
+          description: l.descricao.trim() || null,
+          price_cents: parseValorToCents(l.valor),
+          currency: "BRL",
+          starts_at: null,
+          ends_at: null,
+          is_subscription_allowed: l.permitirCreditos,
+          is_active: true,
+          sort_order: i,
+        }));
+      if (lotRows.length > 0) {
+        const { error: lotError } = await supabase.from("competition_lots").insert(lotRows);
+        if (lotError) throw lotError;
+      }
+
+      toast({
+        title: status === "draft" ? "Rascunho salvo!" : "Competição publicada!",
+        duration: 3000,
+      });
+      navigate("/gestao-competicoes");
+    } catch (e) {
+      toast({
+        title: "Erro ao salvar competição",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSalvarRascunho = () => {
-    toast({
-      title: "Rascunho salvo.",
-      duration: 3000,
-    });
+    saveCompetition("draft");
   };
 
   const onSubmit = (data: FormData) => {
-    console.log({ ...data, distances: selectedDistances });
-    toast({
-      title: "Competição publicada!",
-      duration: 3000,
-    });
+    saveCompetition("open");
   };
 
   return (
@@ -125,7 +252,7 @@ const CadastrarCampeonato = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
-          <Button variant="ghost" className="bg-[#171717] text-[#CCF725] hover:brightness-90 border-0" onClick={handleSalvarRascunho}>
+          <Button type="button" variant="ghost" className="bg-[#171717] text-[#CCF725] hover:brightness-90 border-0" onClick={handleSalvarRascunho} disabled={isSubmitting}>
             <Check className="h-4 w-4 mr-2" />
             Salvar rascunho
           </Button>
@@ -180,7 +307,7 @@ const CadastrarCampeonato = () => {
                   <Label htmlFor="modalidade" className="text-foreground">
                     Modalidade
                   </Label>
-                  <Select onValueChange={(value) => setValue("modalidade", value)}>
+                  <Select value={watch("modalidade")} onValueChange={(value) => setValue("modalidade", value)}>
                     <SelectTrigger className="mt-2">
                       <SelectValue placeholder="Selecione a modalidade" />
                     </SelectTrigger>
@@ -199,7 +326,7 @@ const CadastrarCampeonato = () => {
                   <Label htmlFor="formato" className="text-foreground">
                     Formato
                   </Label>
-                  <Select onValueChange={(value) => setValue("formato", value)}>
+                  <Select value={watch("formato")} onValueChange={(value) => setValue("formato", value)}>
                     <SelectTrigger className="mt-2">
                       <SelectValue placeholder="Selecione o formato" />
                     </SelectTrigger>
@@ -324,8 +451,10 @@ const CadastrarCampeonato = () => {
                 </div>
                 {selectedDistances.includes("outro") && (
                   <Input
-                    placeholder="Insira outra distância"
+                    placeholder="Ex.: 7 (para 7 km)"
                     className="mt-3"
+                    value={outraDistancia}
+                    onChange={(e) => setOutraDistancia(e.target.value)}
                   />
                 )}
                 <p className="text-xs text-muted-foreground mt-2">Para outras distâncias</p>
@@ -349,19 +478,22 @@ const CadastrarCampeonato = () => {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
+                          type="button"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
-                            !register("inscricaoInicio") && "text-muted-foreground"
+                            !watch("inscricaoInicio") && "text-muted-foreground"
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          <span>De: DD/MM/AAAA</span>
+                          {watch("inscricaoInicio") ? format(watch("inscricaoInicio")!, "dd/MM/yyyy") : "De: DD/MM/AAAA"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
+                          selected={watch("inscricaoInicio") ?? undefined}
+                          onSelect={(d) => setValue("inscricaoInicio", d ?? undefined)}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -372,19 +504,22 @@ const CadastrarCampeonato = () => {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
+                          type="button"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
-                            !register("inscricaoFim") && "text-muted-foreground"
+                            !watch("inscricaoFim") && "text-muted-foreground"
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          <span>Até: DD/MM/AAAA</span>
+                          {watch("inscricaoFim") ? format(watch("inscricaoFim")!, "dd/MM/yyyy") : "Até: DD/MM/AAAA"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
+                          selected={watch("inscricaoFim") ?? undefined}
+                          onSelect={(d) => setValue("inscricaoFim", d ?? undefined)}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -402,19 +537,22 @@ const CadastrarCampeonato = () => {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
+                          type="button"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
-                            !register("competicaoInicio") && "text-muted-foreground"
+                            !watch("competicaoInicio") && "text-muted-foreground"
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          <span>De: DD/MM/AAAA</span>
+                          {watch("competicaoInicio") ? format(watch("competicaoInicio")!, "dd/MM/yyyy") : "De: DD/MM/AAAA"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
+                          selected={watch("competicaoInicio") ?? undefined}
+                          onSelect={(d) => setValue("competicaoInicio", d ?? undefined)}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -425,19 +563,22 @@ const CadastrarCampeonato = () => {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
+                          type="button"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
-                            !register("competicaoFim") && "text-muted-foreground"
+                            !watch("competicaoFim") && "text-muted-foreground"
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          <span>Até: DD/MM/AAAA</span>
+                          {watch("competicaoFim") ? format(watch("competicaoFim")!, "dd/MM/yyyy") : "Até: DD/MM/AAAA"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
+                          selected={watch("competicaoFim") ?? undefined}
+                          onSelect={(d) => setValue("competicaoFim", d ?? undefined)}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -575,31 +716,12 @@ const CadastrarCampeonato = () => {
             <h2 className="text-lg font-semibold text-foreground mb-6">Inscrição e checkout</h2>
             
             <div className="space-y-6">
-              {/* Possuir Kit Incluso */}
-              <div>
-                <Label className="text-foreground mb-3 block">Possuir Kit Incluso?</Label>
-                <RadioGroup value={possuiKit} onValueChange={setPossuiKit} className="flex gap-6">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="sim" id="kit-sim" />
-                    <Label htmlFor="kit-sim" className="text-foreground font-normal cursor-pointer">
-                      Sim
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="nao" id="kit-nao" />
-                    <Label htmlFor="kit-nao" className="text-foreground font-normal cursor-pointer">
-                      Não
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
               {/* Tipo de competição */}
               <div>
                 <Label htmlFor="tipoCompeticao" className="text-foreground">
                   Tipo de competição
                 </Label>
-                <Select>
+                <Select value={watch("tipoCompeticao") ?? ""} onValueChange={(v) => setValue("tipoCompeticao", v as "gratuita" | "paga")}>
                   <SelectTrigger className="mt-2">
                     <SelectValue placeholder="Selecione: Gratuita ou Paga" />
                   </SelectTrigger>
@@ -615,6 +737,33 @@ const CadastrarCampeonato = () => {
                 <div key={lote.id}>
                   {index > 0 && <div className="border-t border-border mb-6" />}
                   <div className="space-y-4">
+                    {/* Possuir Kit Incluso */}
+                    <div>
+                      <Label className="text-foreground text-sm mb-2 block">Possuir Kit Incluso?</Label>
+                      <RadioGroup
+                        value={lote.possuiKit}
+                        onValueChange={(value) => {
+                          const novosLotes = [...lotes];
+                          novosLotes[index].possuiKit = value as "sim" | "nao";
+                          setLotes(novosLotes);
+                        }}
+                        className="flex gap-6"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="sim" id={`kit-sim-${lote.id}`} />
+                          <Label htmlFor={`kit-sim-${lote.id}`} className="text-foreground font-normal cursor-pointer">
+                            Sim
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="nao" id={`kit-nao-${lote.id}`} />
+                          <Label htmlFor={`kit-nao-${lote.id}`} className="text-foreground font-normal cursor-pointer">
+                            Não
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
                     {/* Nome do lote */}
                     <div>
                       <Label className="text-foreground text-sm">
@@ -640,7 +789,7 @@ const CadastrarCampeonato = () => {
                         value={lote.valor}
                         onChange={(e) => {
                           const novosLotes = [...lotes];
-                          novosLotes[index].valor = e.target.value;
+                          novosLotes[index].valor = formatValorMask(e.target.value);
                           setLotes(novosLotes);
                         }}
                       />
@@ -703,9 +852,10 @@ const CadastrarCampeonato = () => {
             <Button 
               type="submit"
               className="bg-[#CCF725] text-[#171717] hover:bg-[#CCF725]/90 font-semibold px-8"
+              disabled={isSubmitting}
             >
               <Check className="h-4 w-4 mr-2" />
-              Salvar e publicar
+              {isSubmitting ? "Salvando..." : "Salvar e publicar"}
             </Button>
           </div>
         </form>

@@ -47,7 +47,7 @@ export function AdminGuard() {
   }
 
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (!isAdmin) {

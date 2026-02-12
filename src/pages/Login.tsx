@@ -5,16 +5,25 @@ import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/runlab-logo.png";
 import heroImage from "@/assets/login-hero.png";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showLoginSuccess, setShowLoginSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Redireciona para /financeiro se já estiver logado
+  useEffect(() => {
+    if (!loading && user) {
+      navigate("/financeiro", { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     if (!showLoginSuccess) return;
@@ -51,6 +60,15 @@ const Login = () => {
   const handleForgotPasswordClick = () => {
     navigate('/recuperacao-senha', { state: { email } });
   };
+
+  // Enquanto verifica autenticação, não exibe o formulário
+  if (loading || user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Carregando...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex overflow-hidden">

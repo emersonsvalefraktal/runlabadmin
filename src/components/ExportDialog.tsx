@@ -4,22 +4,36 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When provided, called instead of the default toast-only behavior */
+  onExport?: (format: string) => void | Promise<void>;
+  /** Shows a loading spinner on the export button */
+  exporting?: boolean;
 }
 
-export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
+export const ExportDialog = ({
+  open,
+  onOpenChange,
+  onExport,
+  exporting = false,
+}: ExportDialogProps) => {
   const [exportFormat, setExportFormat] = useState("csv");
   const { toast } = useToast();
 
-  const handleExport = () => {
-    toast({
-      title: "Exportação iniciada",
-      description: `Exportando dados em formato ${exportFormat.toUpperCase()}...`,
-    });
-    onOpenChange(false);
+  const handleExport = async () => {
+    if (onExport) {
+      await onExport(exportFormat);
+    } else {
+      toast({
+        title: "Exportação iniciada",
+        description: `Exportando dados em formato ${exportFormat.toUpperCase()}...`,
+      });
+      onOpenChange(false);
+    }
   };
 
   return (
@@ -28,7 +42,7 @@ export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
         <DialogHeader>
           <DialogTitle className="text-foreground">Exportar</DialogTitle>
         </DialogHeader>
-        
+
         <div className="py-6">
           <RadioGroup value={exportFormat} onValueChange={setExportFormat}>
             <div className="flex items-center space-x-3">
@@ -45,14 +59,23 @@ export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
             variant="ghost"
             onClick={() => onOpenChange(false)}
             className="flex-1 bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+            disabled={exporting}
           >
             Cancelar
           </Button>
           <Button
             onClick={handleExport}
             className="flex-1 bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90 font-medium"
+            disabled={exporting}
           >
-            Exportar
+            {exporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Exportando...
+              </>
+            ) : (
+              "Exportar"
+            )}
           </Button>
         </div>
       </DialogContent>

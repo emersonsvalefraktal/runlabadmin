@@ -1,10 +1,10 @@
 import { Header } from "@/components/Header";
 import { GestaoCompeticoesTabProvider, GestaoCompeticoesTabs, useGestaoCompeticoesTab } from "@/components/GestaoCompeticoesTabs";
+import { CompeticoesFilterProvider } from "@/contexts/CompeticoesFilterContext";
 import { CompeticoesActions } from "@/components/CompeticoesActions";
 import { CompeticoesTable } from "@/components/CompeticoesTable";
 import { CampeonatosActions } from "@/components/CampeonatosActions";
 import { CampeonatosTable } from "@/components/CampeonatosTable";
-import { Pagination } from "@/components/Pagination";
 
 const GestaoCompeticoesContent = () => {
   const { activeTab } = useGestaoCompeticoesTab();
@@ -14,17 +14,15 @@ const GestaoCompeticoesContent = () => {
       <>
         <CampeonatosActions />
         <CampeonatosTable />
-        <Pagination />
       </>
     );
   }
 
   return (
-    <>
+    <CompeticoesFilterProvider>
       <CompeticoesActions />
       <CompeticoesTable />
-      <Pagination />
-    </>
+    </CompeticoesFilterProvider>
   );
 };
 

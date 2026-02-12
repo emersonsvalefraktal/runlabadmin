@@ -2,26 +2,60 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useCorredoresFilters } from "@/contexts/CorredoresFilterContext";
+import type { CorredorFilters } from "@/hooks/useCorredores";
 
 interface CorredoresFilterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+function participacaoToMin(value: string): number | undefined {
+  switch (value) {
+    case "nenhuma": return 0;
+    case "1-3": return 1;
+    case "4-10": return 4;
+    case "10+": return 10;
+    default: return undefined;
+  }
+}
+
 export const CorredoresFilterDialog = ({ open, onOpenChange }: CorredoresFilterDialogProps) => {
-  const [plano, setPlano] = useState<string>("plus");
+  const { filters, setFilters, clearFilters } = useCorredoresFilters();
+  const [plano, setPlano] = useState<string>("");
   const [cidade, setCidade] = useState("");
   const [estado, setEstado] = useState("");
-  const [distancia, setDistancia] = useState<string>("outro");
+  const [distancia, setDistancia] = useState<string>("");
   const [customDistancia, setCustomDistancia] = useState("");
-  const [participacao, setParticipacao] = useState<string>("10+");
+  const [participacao, setParticipacao] = useState<string>("");
   const [eParceiro, setEParceiro] = useState(false);
   const [naoEParceiro, setNaoEParceiro] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (open) {
+      setPlano("");
+      setCidade("");
+      setEstado("");
+      setDistancia("");
+      setCustomDistancia("");
+      setParticipacao("");
+      setEParceiro(filters.eParceiro ?? false);
+      setNaoEParceiro(filters.naoEParceiro ?? false);
+    }
+  }, [open, filters.eParceiro, filters.naoEParceiro]);
+
   const handleApplyFilters = () => {
+    const newFilters: CorredorFilters = {
+      ...filters,
+      eParceiro: eParceiro ? true : undefined,
+      naoEParceiro: naoEParceiro ? true : undefined,
+      preferredDistance: distancia ? (distancia === "outro" ? customDistancia || undefined : distancia) : undefined,
+      participacaoMin: participacao ? participacaoToMin(participacao) : undefined,
+    };
+    setFilters(newFilters);
     toast({
       title: "Filtros aplicados",
       description: "Os filtros foram aplicados com sucesso.",
@@ -38,6 +72,7 @@ export const CorredoresFilterDialog = ({ open, onOpenChange }: CorredoresFilterD
     setParticipacao("");
     setEParceiro(false);
     setNaoEParceiro(false);
+    clearFilters();
     toast({
       title: "Filtros limpos",
       description: "Todos os filtros foram removidos.",

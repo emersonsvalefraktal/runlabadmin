@@ -1,13 +1,48 @@
-import { Search, SlidersHorizontal, Download } from "lucide-react";
+import { Search, SlidersHorizontal, Download, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ExportDialog } from "@/components/ExportDialog";
 import { FilterDialog } from "@/components/FilterDialog";
-import { useState } from "react";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useCompeticoesFilters } from "@/contexts/CompeticoesFilterContext";
+import { downloadCompetitionsCsv } from "@/lib/exportCompetitionsCsv";
+import { toast } from "@/hooks/use-toast";
 
 export const CompeticoesActions = () => {
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
+  const { filters, setFilters } = useCompeticoesFilters();
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState(filters.search ?? "");
+
+  useEffect(() => {
+    setSearchInput(filters.search ?? "");
+  }, [filters.search]);
+
+  const debouncedSetSearch = useCallback(() => {
+    setFilters((prev) => ({ ...prev, search: searchInput.trim() || undefined }));
+  }, [searchInput, setFilters]);
+
+  useEffect(() => {
+    const t = setTimeout(debouncedSetSearch, 400);
+    return () => clearTimeout(t);
+  }, [searchInput, debouncedSetSearch]);
+
+  const handleExport = async () => {
+    try {
+      await downloadCompetitionsCsv(filters);
+      toast({
+        title: "Exportação concluída",
+        description: "O CSV foi baixado com a lista de competições.",
+      });
+    } catch {
+      toast({
+        title: "Erro ao exportar",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <>
@@ -17,6 +52,8 @@ export const CompeticoesActions = () => {
         <Input 
           placeholder="Buscar competição..." 
           className="pl-10 bg-card border-border"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
       </div>
       
@@ -28,18 +65,28 @@ export const CompeticoesActions = () => {
           <SlidersHorizontal className="h-4 w-4 mr-2" />
           Filtrar
         </Button>
-        <span className="text-muted-foreground">|</span>
         <Button 
           variant="secondary" 
-          onClick={() => setExportDialogOpen(true)}
+          onClick={handleExport}
         >
           <Download className="h-4 w-4 mr-2" />
           Exportar
         </Button>
+        {hasPermission("competicoes.add") && (
+          <>
+            <span className="text-muted-foreground">|</span>
+            <Button 
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => navigate("/gestao-competicoes/cadastrar-competicao")}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Cadastrar competição
+            </Button>
+          </>
+        )}
       </div>
     </div>
 
-    <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
     <FilterDialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen} />
     </>
   );

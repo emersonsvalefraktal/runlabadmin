@@ -1,8 +1,9 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useCompeticoesFilters } from "@/contexts/CompeticoesFilterContext";
 
 interface FilterDialogProps {
   open: boolean;
@@ -10,17 +11,34 @@ interface FilterDialogProps {
 }
 
 export const FilterDialog = ({ open, onOpenChange }: FilterDialogProps) => {
-  const [status, setStatus] = useState<string>("finalizada");
-  const [campeonato, setCampeonato] = useState<string>("ranking_etapa");
-  const [periodo, setPeriodo] = useState<string>("outro");
+  const { filters: contextFilters, setFilters, clearFilters } = useCompeticoesFilters();
+  const [status, setStatus] = useState<string>("");
+  const [periodo, setPeriodo] = useState<string>("");
   const [customPeriodo, setCustomPeriodo] = useState("");
-  const [tipo, setTipo] = useState<string>("paga");
+  const [tipo, setTipo] = useState<string>("");
   const [formato, setFormato] = useState<string>("presencial");
-  const [modalidade, setModalidade] = useState<string>("outra");
+  const [campeonato, setCampeonato] = useState<string>("");
+  const [modalidade, setModalidade] = useState<string>("");
   const [customModalidade, setCustomModalidade] = useState("");
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (open) {
+      setStatus(contextFilters.status ?? "");
+      setPeriodo(contextFilters.periodo ?? "");
+      setTipo(contextFilters.tipo ?? "");
+      setModalidade(contextFilters.modalidade ?? "");
+    }
+  }, [open, contextFilters.status, contextFilters.periodo, contextFilters.tipo, contextFilters.modalidade]);
+
   const handleApplyFilters = () => {
+    setFilters({
+      ...contextFilters,
+      status: status || undefined,
+      periodo: periodo || undefined,
+      tipo: tipo || undefined,
+      modalidade: modalidade === "outra" && customModalidade ? undefined : (modalidade || undefined),
+    });
     toast({
       title: "Filtros aplicados",
       description: "Os filtros foram aplicados com sucesso.",
@@ -30,17 +48,19 @@ export const FilterDialog = ({ open, onOpenChange }: FilterDialogProps) => {
 
   const handleClearFilters = () => {
     setStatus("");
-    setCampeonato("");
     setPeriodo("");
     setCustomPeriodo("");
     setTipo("");
     setFormato("");
+    setCampeonato("");
     setModalidade("");
     setCustomModalidade("");
+    clearFilters();
     toast({
       title: "Filtros limpos",
       description: "Todos os filtros foram removidos.",
     });
+    onOpenChange(false);
   };
 
   return (
