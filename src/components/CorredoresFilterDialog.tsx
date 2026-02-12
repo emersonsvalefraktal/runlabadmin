@@ -1,0 +1,314 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+
+interface CorredoresFilterDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const CorredoresFilterDialog = ({ open, onOpenChange }: CorredoresFilterDialogProps) => {
+  const [plano, setPlano] = useState<string>("plus");
+  const [cidade, setCidade] = useState("");
+  const [estado, setEstado] = useState("");
+  const [distancia, setDistancia] = useState<string>("outro");
+  const [customDistancia, setCustomDistancia] = useState("");
+  const [participacao, setParticipacao] = useState<string>("10+");
+  const [eParceiro, setEParceiro] = useState(false);
+  const [naoEParceiro, setNaoEParceiro] = useState(false);
+  const { toast } = useToast();
+
+  const handleApplyFilters = () => {
+    toast({
+      title: "Filtros aplicados",
+      description: "Os filtros foram aplicados com sucesso.",
+    });
+    onOpenChange(false);
+  };
+
+  const handleClearFilters = () => {
+    setPlano("");
+    setCidade("");
+    setEstado("");
+    setDistancia("");
+    setCustomDistancia("");
+    setParticipacao("");
+    setEParceiro(false);
+    setNaoEParceiro(false);
+    toast({
+      title: "Filtros limpos",
+      description: "Todos os filtros foram removidos.",
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-[#1E1E1E] border-0 sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle className="text-foreground">Filtro</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-6 py-4">
+          {/* Plano de assinatura */}
+          <div>
+            <h3 className="text-sm font-medium text-foreground mb-3">Plano de assinatura</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setPlano("gratuito")}
+                className={`${
+                  plano === "gratuito"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Gratuito
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setPlano("essencial")}
+                className={`${
+                  plano === "essencial"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Essencial
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setPlano("plus")}
+                className={`${
+                  plano === "plus"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Plus
+              </Button>
+            </div>
+          </div>
+
+          {/* Cidade e Estado */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-3">Cidade</h3>
+              <Input
+                placeholder="Ex: São Paulo"
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+                className="bg-[#2A2A2A] border-0 text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-3">Estado</h3>
+              <Input
+                placeholder="Ex: SP"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                className="bg-[#2A2A2A] border-0 text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Última distância corrida */}
+          <div>
+            <h3 className="text-sm font-medium text-foreground mb-3">Última distância corrida</h3>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("3km")}
+                className={`${
+                  distancia === "3km"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                3 km
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("5km")}
+                className={`${
+                  distancia === "5km"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                5 km
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("10km")}
+                className={`${
+                  distancia === "10km"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                10 km
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("21km")}
+                className={`${
+                  distancia === "21km"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                21 km
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("42km")}
+                className={`${
+                  distancia === "42km"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                42 km
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setDistancia("outro")}
+                className={`${
+                  distancia === "outro"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Outro
+              </Button>
+            </div>
+            {distancia === "outro" && (
+              <Input
+                placeholder="Insira outra distância percorrida"
+                value={customDistancia}
+                onChange={(e) => setCustomDistancia(e.target.value)}
+                className="mt-2 bg-[#2A2A2A] border-0 text-foreground placeholder:text-muted-foreground"
+              />
+            )}
+          </div>
+
+          {/* Participação em provas */}
+          <div>
+            <h3 className="text-sm font-medium text-foreground mb-3">Participação em provas</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setParticipacao("nenhuma")}
+                className={`${
+                  participacao === "nenhuma"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Nenhuma
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setParticipacao("1-3")}
+                className={`${
+                  participacao === "1-3"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                1-3
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setParticipacao("4-10")}
+                className={`${
+                  participacao === "4-10"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                4-10
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setParticipacao("10+")}
+                className={`${
+                  participacao === "10+"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                10+
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setParticipacao("outro")}
+                className={`${
+                  participacao === "outro"
+                    ? "bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90"
+                    : "bg-[#2A2A2A] text-foreground hover:bg-[#333333]"
+                }`}
+              >
+                Outro
+              </Button>
+            </div>
+          </div>
+
+          {/* Tipo de parceiro */}
+          <div>
+            <h3 className="text-sm font-medium text-foreground mb-3">Tipo de parceiro</h3>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="e-parceiro"
+                  checked={eParceiro}
+                  onCheckedChange={(checked) => setEParceiro(checked as boolean)}
+                  className="border-muted-foreground"
+                />
+                <label
+                  htmlFor="e-parceiro"
+                  className="text-sm text-foreground cursor-pointer"
+                >
+                  É parceiro
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="nao-e-parceiro"
+                  checked={naoEParceiro}
+                  onCheckedChange={(checked) => setNaoEParceiro(checked as boolean)}
+                  className="border-muted-foreground"
+                />
+                <label
+                  htmlFor="nao-e-parceiro"
+                  className="text-sm text-foreground cursor-pointer"
+                >
+                  Não é parceiro
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="space-y-3 pt-4">
+            <Button
+              onClick={handleApplyFilters}
+              className="w-full bg-[#D4FF00] text-black hover:bg-[#D4FF00]/90 font-medium"
+            >
+              Aplicar filtros
+            </Button>
+            <button
+              onClick={handleClearFilters}
+              className="w-full text-foreground hover:text-foreground/80 text-sm transition-colors"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
